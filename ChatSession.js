@@ -4,15 +4,19 @@ import fs from "fs";
 import ora from "ora";
 import {marked} from "marked";
 import TerminalRenderer from "marked-terminal";
+import chalk from "chalk";
 
 // Prettify output to terminal
 marked.setOptions({
     renderer: new TerminalRenderer({
         reflowText: true,
+        width: 100,
+        paragraph: chalk.blueBright
     })
 });
 
 class ChatSession {
+    creationDate = new Date()
     system = '' // Steer behaviour of ChatGPT across sessions
     type = 'chat'
     messages = []
@@ -52,13 +56,12 @@ class ChatSession {
         this.chat(openai, prompt)
             .then(res => {
                 spinner.stop()
-                const output = marked(res).trim()
-                console.log(` ${icon} ${output}`)
+                console.log(` ${icon} ${marked(res).trim()}`)
             })
     }
 
     costs() {
-        return `${this.totalTokens / 1000 * 0.002} $  (${this.totalTokens} tokens)`
+        return `${(this.totalTokens / 1000 * 0.002).toFixed(4)} $  (${this.totalTokens} tokens)`
     }
 
     init() {
@@ -92,7 +95,7 @@ class ChatSession {
 
     storeSession() {
         if (this.transient)
-            return  // Don't store if it's a single-prompt "sessions"
+            return  // Don't store if it's a single-prompt "session"
         const sessionPath = ChatSession._getSessionPath(this.type)
         try {
             const backup = JSON.stringify(this);
@@ -115,7 +118,14 @@ ChatSession.restoreOrNew = function (
     try {
         fs.statSync(sessionPath)
         const sessionJSON = fs.readFileSync(sessionPath, {encoding: 'utf8'})
-        return Object.assign(new ChatSession(), JSON.parse(sessionJSON))
+        const restoredSession = Object.assign(new ChatSession(), JSON.parse(sessionJSON));
+        restoredSession.creationDate = new Date(restoredSession.creationDate)
+        const oneHourAgo = new Date(new Date().getTime() - 1000 * 60 * 60)
+        if (restoredSession.creationDate < oneHourAgo) { // Save credits
+            console.log('Previous session was more than one hour old => starting new session')
+            throw Error('Session too old, starting with a fresh session')
+        }
+        return restoredSession
     } catch (e) {
         return new ChatSession(system, 0.8, type)
     }
