@@ -1,6 +1,7 @@
 import path from "path";
 import os from "os";
 import fs from "fs";
+import util from "util";
 import ora from "ora";
 import {marked} from "marked";
 import TerminalRenderer from "marked-terminal";
@@ -46,7 +47,7 @@ class ChatSession {
         this.messages.push({role: 'user', content: prompt})
         let response = await this._invokeAssistant(openai);
         this.messages.push({role: 'assistant', content: response})
-        this.storeSession()
+        this.persist()
 
         return response;
     }
@@ -72,11 +73,12 @@ class ChatSession {
 
     reset() {
         this.init()
-        this.storeSession()
+        this.persist()
         return 'Fresh session started'
     }
 
     async _invokeAssistant(openai) {
+        // https://platform.openai.com/docs/api-reference/chat
         const result = await openai.createChatCompletion({
             messages: this.messages,
             temperature: this.temperature,
@@ -87,13 +89,13 @@ class ChatSession {
             console.log(`ERROR(status=${response.status}): ${result.data}`)
         this.totalTokens += result.data.usage.total_tokens
         const answer = result.data.choices[0].message
-
+        //console.log(util.inspect(result.data, {showHidden: false, depth: null, colors: true}))
         if (answer.content.indexOf(this.stopToken) !== -1)
             console.log("Session finished")
         return answer.content
     }
 
-    storeSession() {
+    persist() {
         if (this.transient)
             return  // Don't store if it's a single-prompt "session"
         const sessionPath = ChatSession._getSessionPath(this.type)
